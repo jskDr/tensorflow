@@ -21,7 +21,7 @@ from __future__ import print_function
 import gzip
 import os
 
-import numpy
+import numpy, pickle
 from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -159,8 +159,32 @@ class DataSet(object):
     end = self._index_in_epoch
     return self._images[start:end], self._labels[start:end]
 
+def already_pikle(filename, work_directory):
+  """Download the data from Yann's website, unless it's already here."""
+  filepath = os.path.join(work_directory, filename)
+  if os.path.exists(filepath):
+    with open(filepath, "rb") as f:
+      print('Successfully loaded:', filepath)
+      return pickle.load(f)
+  return None
 
-def read_data_sets(train_dir, fake_data=False, one_hot=False):
+def save_pickle(filename, work_directory, data_list):
+  """
+  Save all data as a pickle form.
+  If save is success, it returns True
+  Otherwise, it returns False.
+  """
+  if not os.path.exists(work_directory):
+    os.mkdir(work_directory)
+  filepath = os.path.join(work_directory, filename)
+  with open(filepath, "wb") as f:
+    pickle.dump(data_list, f)
+    print('Successfully saved:', filepath)
+    return True
+
+  return False
+
+def read_data_sets(train_dir, fake_data=False, one_hot=False, fastload = True):
   class DataSets(object):
     pass
   data_sets = DataSets()
@@ -171,28 +195,41 @@ def read_data_sets(train_dir, fake_data=False, one_hot=False):
     data_sets.test = DataSet([], [], fake_data=True, one_hot=one_hot)
     return data_sets
 
-  TRAIN_IMAGES = 'train-images-idx3-ubyte.gz'
-  TRAIN_LABELS = 'train-labels-idx1-ubyte.gz'
-  TEST_IMAGES = 't10k-images-idx3-ubyte.gz'
-  TEST_LABELS = 't10k-labels-idx1-ubyte.gz'
-  VALIDATION_SIZE = 5000
+  ALL_DATA_PICKLE = 'minst.pkl'
+  data_list = already_pikle( ALL_DATA_PICKLE, train_dir)
+  if not data_list:
+    TRAIN_IMAGES = 'train-images-idx3-ubyte.gz'
+    TRAIN_LABELS = 'train-labels-idx1-ubyte.gz'
+    TEST_IMAGES = 't10k-images-idx3-ubyte.gz'
+    TEST_LABELS = 't10k-labels-idx1-ubyte.gz'
+    VALIDATION_SIZE = 5000
+  
+    local_file = maybe_download(TRAIN_IMAGES, train_dir)
+    train_images = extract_images(local_file)
+  
+    local_file = maybe_download(TRAIN_LABELS, train_dir)
+    train_labels = extract_labels(local_file, one_hot=one_hot)
+  
+    local_file = maybe_download(TEST_IMAGES, train_dir)
+    test_images = extract_images(local_file)
+  
+    local_file = maybe_download(TEST_LABELS, train_dir)
+    test_labels = extract_labels(local_file, one_hot=one_hot)
+  
+    validation_images = train_images[:VALIDATION_SIZE]
+    validation_labels = train_labels[:VALIDATION_SIZE]
+    train_images = train_images[VALIDATION_SIZE:]
+    train_labels = train_labels[VALIDATION_SIZE:]
 
-  local_file = maybe_download(TRAIN_IMAGES, train_dir)
-  train_images = extract_images(local_file)
-
-  local_file = maybe_download(TRAIN_LABELS, train_dir)
-  train_labels = extract_labels(local_file, one_hot=one_hot)
-
-  local_file = maybe_download(TEST_IMAGES, train_dir)
-  test_images = extract_images(local_file)
-
-  local_file = maybe_download(TEST_LABELS, train_dir)
-  test_labels = extract_labels(local_file, one_hot=one_hot)
-
-  validation_images = train_images[:VALIDATION_SIZE]
-  validation_labels = train_labels[:VALIDATION_SIZE]
-  train_images = train_images[VALIDATION_SIZE:]
-  train_labels = train_labels[VALIDATION_SIZE:]
+    if fastload: # This is working only the flag of fastload is turned on. 
+      data_list = [train_images, train_labels, 
+        validation_images, validation_labels, 
+        test_images, test_labels]
+      save_pickle( ALL_DATA_PICKLE, train_dir, data_list)
+  else:
+    [train_images, train_labels, 
+      validation_images, validation_labels, 
+      test_images, test_labels] = data_list
 
   data_sets.train = DataSet(train_images, train_labels)
   data_sets.validation = DataSet(validation_images, validation_labels)
